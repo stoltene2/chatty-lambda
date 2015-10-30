@@ -2,6 +2,7 @@ module Chatty.Lib
     ( textToMessage
     , receive
     , Message (..)
+    , UserMessage (..)
     , Name
     ) where
 
@@ -20,21 +21,26 @@ data Message = UserText Text
              deriving (Show, Eq)
 
 
+data UserMessage = UserMessage
+                   { userMessage :: Message
+                   , userMessageName :: Text
+                   } deriving (Show, Eq)
+
 ------------------------------------------------------------------------------
 
 splitCommand :: Text -> (Text, Text)
 splitCommand t = second T.strip (T.break C.isSpace t)
 
 
-textToMessage :: Text -> Message
-textToMessage (splitCommand -> ("/join", _)) = UserJoin
-textToMessage (splitCommand -> ("/quit", _)) = UserDisconnect
-textToMessage t = UserText t
+textToMessage :: Text -> UserMessage
+textToMessage (splitCommand -> ("/join", _)) = UserMessage UserJoin "unknown"
+textToMessage (splitCommand -> ("/quit", _)) = UserMessage UserDisconnect "unknown"
+textToMessage t = UserMessage (UserText t) "unknown"
 
 
 ------------------------------------------------------------------------------
 
-receive :: Handle -> TChan Message -> IO ()
+receive :: Handle -> TChan UserMessage -> IO ()
 receive h tmsg = do
   input <- hGetLine h
   atomically $ writeTChan tmsg (textToMessage input)

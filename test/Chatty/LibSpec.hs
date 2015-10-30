@@ -2,7 +2,7 @@ module Chatty.LibSpec where
 
 import ClassyPrelude
 
-import Chatty.Lib (receive, textToMessage, Message(..))
+import Chatty.Lib (receive, textToMessage, UserMessage(..), Message(..))
 
 import System.IO
 import System.Posix.IO (createPipe, fdToHandle)
@@ -16,14 +16,14 @@ spec = describe "LibSpec" $ do
 
   describe "textToMessage" $ do
     it "parse any string as a message" $ do
-      textToMessage "foo bar bang" `shouldBe` (UserText "foo bar bang")
+      textToMessage "foo bar bang" `shouldBe` UserMessage (UserText "foo bar bang") "unknown"
 
 
     it "should create UserJoin message from '/join anything'" $ do
-      textToMessage "/join me" `shouldBe` UserJoin
+      textToMessage "/join me" `shouldBe` UserMessage UserJoin "unknown"
 
     it "should create UserDisconnect message from '/quit'" $ do
-      textToMessage "/quit anything" `shouldBe` UserDisconnect
+      textToMessage "/quit anything" `shouldBe` UserMessage UserDisconnect "unknown"
 
 
   describe "receive" $ do
@@ -36,7 +36,8 @@ spec = describe "LibSpec" $ do
       receive read tm
 
       msg <- atomically $ readTChan tm
-      msg `shouldBe` UserJoin
+      msg `shouldBe` UserMessage UserJoin "unknown"
+
 
     it "should put incoming UserDisconnect on the TChan" $ do
       tm <- newTChanIO
@@ -47,7 +48,8 @@ spec = describe "LibSpec" $ do
       receive read tm
 
       msg <- atomically $ readTChan tm
-      msg `shouldBe` UserDisconnect
+      msg `shouldBe` UserMessage UserDisconnect "unknown"
+
 
     it "should put UserText TChan" $ do
       tm <- newTChanIO
@@ -58,7 +60,7 @@ spec = describe "LibSpec" $ do
       receive read tm
 
       msg <- atomically $ readTChan tm
-      msg `shouldBe` (UserText "Why hello there")
+      msg `shouldBe` UserMessage (UserText "Why hello there") "unknown"
 
 
 ------------------------------------------------------------------------------
