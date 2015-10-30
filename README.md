@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.org/stoltene2/chatty-lambda.svg)](https://travis-ci.org/stoltene2/chatty-lambda)
 
 # Chatty Lambda
 
