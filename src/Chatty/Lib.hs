@@ -1,5 +1,6 @@
 module Chatty.Lib
     ( textToMessage
+    , receive
     , Message (..)
     , Name
     ) where
@@ -29,3 +30,11 @@ textToMessage :: Text -> Message
 textToMessage (splitCommand -> ("/join", _)) = UserJoin
 textToMessage (splitCommand -> ("/quit", _)) = UserDisconnect
 textToMessage t = UserText t
+
+
+------------------------------------------------------------------------------
+
+receive :: Handle -> TChan Message -> IO ()
+receive h tmsg = do
+  input <- hGetLine h
+  atomically $ writeTChan tmsg (textToMessage input)
