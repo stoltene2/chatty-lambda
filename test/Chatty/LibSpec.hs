@@ -15,15 +15,15 @@ spec :: Spec
 spec = describe "LibSpec" $ do
 
   describe "textToMessage" $ do
-    it "parse any string as a message" $ do
-      textToMessage "foo bar bang" `shouldBe` UserMessage (UserText "foo bar bang") "unknown"
+    it "shoul create UserText from '/msg username msg text'" $ do
+      textToMessage "/msg myUserName foo bar bang" `shouldBe` UserMessage (UserText "foo bar bang") "myUserName"
 
 
-    it "should create UserJoin message from '/join anything'" $ do
-      textToMessage "/join myUserName" `shouldBe` UserMessage UserJoin "unknown"
+    it "should create UserJoin message from '/join username'" $ do
+      textToMessage "/join myUserName" `shouldBe` UserMessage UserJoin "myUserName"
 
     it "should create UserDisconnect message from '/quit'" $ do
-      textToMessage "/quit myUserName" `shouldBe` UserMessage UserDisconnect "unknown"
+      textToMessage "/quit myUserName" `shouldBe` UserMessage UserDisconnect "myUserName"
 
 
   describe "receive" $ do
@@ -34,7 +34,7 @@ spec = describe "LibSpec" $ do
         receive read tm
 
         msg <- atomically $ readTChan tm
-        msg `shouldBe` UserMessage UserJoin "unknown"
+        msg `shouldBe` UserMessage UserJoin "myUserName"
 
     it "should put incoming UserDisconnect on the TChan" $ do
       tm <- newTChanIO
@@ -43,18 +43,18 @@ spec = describe "LibSpec" $ do
         receive read tm
 
         msg <- atomically $ readTChan tm
-        msg `shouldBe` UserMessage UserDisconnect "unknown"
+        msg `shouldBe` UserMessage UserDisconnect "myUserName"
 
 
     it "should put UserText TChan" $ do
       tm <- newTChanIO
 
       runWithLinkedHandles $ \(read, write) -> do
-        hPutStr write "Why hello there\n"
+        hPutStr write "/msg myUserName Why hello there\n"
         receive read tm
 
         msg <- atomically $ readTChan tm
-        msg `shouldBe` UserMessage (UserText "Why hello there") "unknown"
+        msg `shouldBe` UserMessage (UserText "Why hello there") "myUserName"
 
 
 ------------------------------------------------------------------------------

@@ -28,13 +28,20 @@ data UserMessage = UserMessage
 
 ------------------------------------------------------------------------------
 
-splitCommand :: Text -> (Text, Text)
-splitCommand t = second T.strip (T.break C.isSpace t)
+splitCommand :: Text -> (Text, (Text, Text))
+splitCommand t =
+  let
+    (cmd, nameAndRest) = second T.strip (T.break C.isSpace t)
+    (name, rest) = second T.strip (T.break C.isSpace nameAndRest)
+  in (cmd, (name, rest))
+
 
 
 textToMessage :: Text -> UserMessage
-textToMessage (splitCommand -> ("/join", _)) = UserMessage UserJoin "unknown"
-textToMessage (splitCommand -> ("/quit", _)) = UserMessage UserDisconnect "unknown"
+textToMessage (splitCommand -> ("/join", (name, _))) = UserMessage UserJoin name
+textToMessage (splitCommand -> ("/quit", (name, _))) = UserMessage UserDisconnect name
+textToMessage (splitCommand -> ("/msg",  (name, msg))) = UserMessage (UserText msg) name
+-- todo, handle this
 textToMessage t = UserMessage (UserText t) "unknown"
 
 
