@@ -20,51 +20,51 @@ spec = describe "LibSpec" $ do
 
 
     it "should create UserJoin message from '/join anything'" $ do
-      textToMessage "/join me" `shouldBe` UserMessage UserJoin "unknown"
+      textToMessage "/join myUserName" `shouldBe` UserMessage UserJoin "unknown"
 
     it "should create UserDisconnect message from '/quit'" $ do
-      textToMessage "/quit anything" `shouldBe` UserMessage UserDisconnect "unknown"
+      textToMessage "/quit myUserName" `shouldBe` UserMessage UserDisconnect "unknown"
 
 
   describe "receive" $ do
     it "should put incoming UserJoin on the TChan" $ do
       tm <- newTChanIO
-      (read, write) <- createLinkedHandles
+      runWithLinkedHandles $ \(read, write) -> do
+        hPutStr write "/join myUserName\n"
+        receive read tm
 
-      hPutStr write "/join\n"
-
-      receive read tm
-
-      msg <- atomically $ readTChan tm
-      msg `shouldBe` UserMessage UserJoin "unknown"
-
+        msg <- atomically $ readTChan tm
+        msg `shouldBe` UserMessage UserJoin "unknown"
 
     it "should put incoming UserDisconnect on the TChan" $ do
       tm <- newTChanIO
-      (read, write) <- createLinkedHandles
+      runWithLinkedHandles $ \(read, write) -> do
+        hPutStr write "/quit myUserName\n"
+        receive read tm
 
-      hPutStr write "/quit\n"
-
-      receive read tm
-
-      msg <- atomically $ readTChan tm
-      msg `shouldBe` UserMessage UserDisconnect "unknown"
+        msg <- atomically $ readTChan tm
+        msg `shouldBe` UserMessage UserDisconnect "unknown"
 
 
     it "should put UserText TChan" $ do
       tm <- newTChanIO
-      (read, write) <- createLinkedHandles
 
-      hPutStr write "Why hello there\n"
+      runWithLinkedHandles $ \(read, write) -> do
+        hPutStr write "Why hello there\n"
+        receive read tm
 
-      receive read tm
-
-      msg <- atomically $ readTChan tm
-      msg `shouldBe` UserMessage (UserText "Why hello there") "unknown"
+        msg <- atomically $ readTChan tm
+        msg `shouldBe` UserMessage (UserText "Why hello there") "unknown"
 
 
 ------------------------------------------------------------------------------
 -- Helpers
+
+
+runWithLinkedHandles :: ((Handle, Handle) -> IO ()) -> IO ()
+runWithLinkedHandles action = do
+  bracket createLinkedHandles (\(read, write) -> hClose read >> hClose write) action
+
 
 createLinkedHandles :: IO (Handle, Handle)
 createLinkedHandles = do
