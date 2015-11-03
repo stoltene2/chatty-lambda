@@ -22,8 +22,13 @@ spec = describe "LibSpec" $ do
     it "should create UserJoin message from '/join username'" $ do
       textToMessage "/join myUserName" `shouldBe` UserMessage UserJoin "myUserName"
 
+
     it "should create UserDisconnect message from '/quit'" $ do
       textToMessage "/quit myUserName" `shouldBe` UserMessage UserDisconnect "myUserName"
+
+
+    it "should create UserInvalidCommand from anything else" $ do
+      textToMessage "myUserName" `shouldBe` UserMessage UserInvalidCommand "unknownUser"
 
 
   describe "receive" $ do

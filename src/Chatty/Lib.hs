@@ -18,6 +18,7 @@ type Name = Text
 data Message = UserText Text
              | UserDisconnect
              | UserJoin
+             | UserInvalidCommand
              deriving (Show, Eq)
 
 
@@ -41,13 +42,14 @@ textToMessage :: Text -> UserMessage
 textToMessage (splitCommand -> ("/join", (name, _))) = UserMessage UserJoin name
 textToMessage (splitCommand -> ("/quit", (name, _))) = UserMessage UserDisconnect name
 textToMessage (splitCommand -> ("/msg",  (name, msg))) = UserMessage (UserText msg) name
--- todo, handle this
-textToMessage t = UserMessage (UserText t) "unknown"
+textToMessage t = UserMessage UserInvalidCommand "unknownUser"
 
 
 ------------------------------------------------------------------------------
-
 receive :: Handle -> TChan UserMessage -> IO ()
 receive h tmsg = do
   input <- hGetLine h
   atomically $ writeTChan tmsg (textToMessage input)
+
+
+------------------------------------------------------------------------------
