@@ -2,7 +2,7 @@ module Chatty.LibSpec where
 
 import ClassyPrelude
 
-import Chatty.Lib (receive, textToMessage, UserMessage(..), Message(..))
+import Chatty.Lib (receive, respond, textToMessage, messageToText, UserMessage(..), Message(..))
 
 import System.IO
 import System.Posix.IO (createPipe, fdToHandle)
@@ -62,9 +62,42 @@ spec = describe "LibSpec" $ do
         msg `shouldBe` UserMessage (UserText "Why hello there") "myUserName"
 
 
+  describe "messageToText" $ do
+    it "should render UserMessage for text" $ do
+      messageToText (UserMessage (UserText "text") "username") `shouldBe` "username: text"
+
+
+    it "should render UserDisconnect" $ do
+      messageToText (UserMessage UserDisconnect "username") `shouldBe` "*** User username Disconnected ***"
+
+
+    it "should render UserJoin" $ do
+      messageToText (UserMessage UserJoin "username") `shouldBe` "*** User username Connected ***"
+
+
+    it "should render anything else as invalid command" $ do
+      messageToText (UserMessage UserInvalidCommand "unknown") `shouldBe`
+        "*** Unknown command ***\n" ++
+        "/join <username>\n" ++
+        "/msg <username> <text\n" ++
+        "/quit <username>"
+
+
+  describe "respond" $ do
+    it "should dispatch messages from the UserMessage channel and respond over handle" $ do
+      runWithLinkedHandles $ \(read, write) -> do
+        tm <- newTChanIO
+        atomically (writeTChan tm (UserMessage (UserText "hello") "username"))
+
+        respond write tm
+
+        line <- ClassyPrelude.hGetLine read :: IO Text
+
+        line `shouldBe` "username: hello"
+
+
 ------------------------------------------------------------------------------
 -- Helpers
-
 
 runWithLinkedHandles :: ((Handle, Handle) -> IO ()) -> IO ()
 runWithLinkedHandles action = do

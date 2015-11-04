@@ -1,6 +1,8 @@
 module Chatty.Lib
     ( textToMessage
+    , messageToText
     , receive
+    , respond
     , Message (..)
     , UserMessage (..)
     , Name
@@ -24,7 +26,7 @@ data Message = UserText Text
 
 data UserMessage = UserMessage
                    { userMessage :: Message
-                   , userMessageName :: Text
+                   , userMessageName :: Name
                    } deriving (Show, Eq)
 
 ------------------------------------------------------------------------------
@@ -37,7 +39,6 @@ splitCommand t =
   in (cmd, (name, rest))
 
 
-
 textToMessage :: Text -> UserMessage
 textToMessage (splitCommand -> ("/join", (name, _))) = UserMessage UserJoin name
 textToMessage (splitCommand -> ("/quit", (name, _))) = UserMessage UserDisconnect name
@@ -45,11 +46,25 @@ textToMessage (splitCommand -> ("/msg",  (name, msg))) = UserMessage (UserText m
 textToMessage t = UserMessage UserInvalidCommand "unknownUser"
 
 
+messageToText :: UserMessage -> Text
+messageToText (UserMessage (UserText txt) name) = name ++ ": " ++ txt
+messageToText (UserMessage UserDisconnect name) = "*** User " ++ name ++ " Disconnected ***"
+messageToText (UserMessage UserJoin name) = "*** User " ++ name ++ " Connected ***"
+messageToText _ = "*** Unknown command ***\n" ++
+                  "/join <username>\n" ++
+                  "/msg <username> <text\n" ++
+                  "/quit <username>"
+
+
 ------------------------------------------------------------------------------
 receive :: Handle -> TChan UserMessage -> IO ()
-receive h tmsg = do
+receive h msgq = do
   input <- hGetLine h
-  atomically $ writeTChan tmsg (textToMessage input)
+  atomically $ writeTChan msgq (textToMessage input)
 
 
 ------------------------------------------------------------------------------
+respond :: Handle -> TChan UserMessage -> IO ()
+respond h msgq = do
+  msg <- atomically (readTChan msgq)
+  hPutStrLn h (messageToText msg)
