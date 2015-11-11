@@ -58,13 +58,12 @@ messageToText _ = "*** Unknown command ***\n" ++
 
 ------------------------------------------------------------------------------
 receive :: Handle -> TChan UserMessage -> IO ()
-receive h msgq = do
+receive h msgq = forever $ do
   input <- hGetLine h
   atomically $ writeTChan msgq (textToMessage input)
 
-
 ------------------------------------------------------------------------------
 respond :: Handle -> TChan UserMessage -> IO ()
-respond h msgq = do
+respond h msgq = forever $ do
   msg <- atomically (readTChan msgq)
   hPutStrLn h (messageToText msg)

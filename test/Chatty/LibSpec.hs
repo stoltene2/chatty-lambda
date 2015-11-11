@@ -2,13 +2,16 @@ module Chatty.LibSpec where
 
 import ClassyPrelude
 
-import Chatty.Lib (receive, respond, textToMessage, messageToText, UserMessage(..), Message(..))
+import Control.Concurrent.Async (race_)
 
 import System.IO
 import System.Posix.IO (createPipe, fdToHandle)
 
 import Test.Hspec
 import Test.Hspec.QuickCheck (prop)
+
+import Chatty.Lib (receive, respond, textToMessage, messageToText, UserMessage(..), Message(..))
+
 
 ------------------------------------------------------------------------------
 spec :: Spec
@@ -36,19 +39,18 @@ spec = describe "LibSpec" $ do
       tm <- newTChanIO
       runWithLinkedHandles $ \(read, write) -> do
         hPutStr write "/join myUserName\n"
-        receive read tm
-
-        msg <- atomically $ readTChan tm
-        msg `shouldBe` UserMessage UserJoin "myUserName"
+        longRunning (receive read tm) $ do
+          msg <- atomically $ readTChan tm
+          msg `shouldBe` UserMessage UserJoin "myUserName"
 
     it "should put incoming UserDisconnect on the TChan" $ do
       tm <- newTChanIO
       runWithLinkedHandles $ \(read, write) -> do
         hPutStr write "/quit myUserName\n"
-        receive read tm
+        longRunning (receive read tm) $ do
 
-        msg <- atomically $ readTChan tm
-        msg `shouldBe` UserMessage UserDisconnect "myUserName"
+          msg <- atomically $ readTChan tm
+          msg `shouldBe` UserMessage UserDisconnect "myUserName"
 
 
     it "should put UserText TChan" $ do
@@ -56,10 +58,10 @@ spec = describe "LibSpec" $ do
 
       runWithLinkedHandles $ \(read, write) -> do
         hPutStr write "/msg myUserName Why hello there\n"
-        receive read tm
+        longRunning (receive read tm) $ do
 
-        msg <- atomically $ readTChan tm
-        msg `shouldBe` UserMessage (UserText "Why hello there") "myUserName"
+          msg <- atomically $ readTChan tm
+          msg `shouldBe` UserMessage (UserText "Why hello there") "myUserName"
 
 
   describe "messageToText" $ do
@@ -89,16 +91,29 @@ spec = describe "LibSpec" $ do
         tm <- newTChanIO
         atomically (writeTChan tm (UserMessage (UserText "hello") "username"))
 
-        respond write tm
-
-        line <- ClassyPrelude.hGetLine read :: IO Text
-
-        line `shouldBe` "username: hello"
+        longRunning (respond write tm) $ do
+          line <- ClassyPrelude.hGetLine read :: IO Text
+          line `shouldBe` "username: hello"
 
 
 ------------------------------------------------------------------------------
 -- Helpers
 
+{-
+longRunning is used for _long_ actions that may never return. This is
+a simple wrapper around race_ so that when the test finishes the
+_long_ action gets cancelled.
+-}
+
+longRunning :: IO a -> IO b -> IO ()
+longRunning long test = race_ long test
+
+{-
+This takes an aciton to run where the arguments are the (read, write)
+ends of a file pipe. The handles are automatically cleaned up when the
+action is run. This is used for testing functions that read from file
+handles.
+-}
 runWithLinkedHandles :: ((Handle, Handle) -> IO ()) -> IO ()
 runWithLinkedHandles action = do
   bracket createLinkedHandles (\(read, write) -> hClose read >> hClose write) action
