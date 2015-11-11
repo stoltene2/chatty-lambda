@@ -14,6 +14,9 @@ import ClassyPrelude
 import qualified Data.Text as T
 import qualified Data.Char as C
 
+import Network
+import System.IO (hSetBuffering, BufferMode(..))
+
 ------------------------------------------------------------------------------
 type Name = Text
 
@@ -67,3 +70,15 @@ respond :: Handle -> TChan UserMessage -> IO ()
 respond h msgq = forever $ do
   msg <- atomically (readTChan msgq)
   hPutStrLn h (messageToText msg)
+
+
+------------------------------------------------------------------------------
+runServer :: IO ()
+runServer = withSocketsDo $ do
+  bracket (listenOn (PortNumber 9000)) sClose $ \listenSock -> do
+    forever $ do
+      bracket (accept listenSock) (\(h, _, _) -> hClose h) $ \(handle, hostname, port) -> do
+        hSetBuffering handle LineBuffering
+        l <- hGetLine handle :: IO Text
+        hPutStrLn handle l
+        return ()
