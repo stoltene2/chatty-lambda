@@ -77,8 +77,14 @@ runServer :: IO ()
 runServer = withSocketsDo $ do
   bracket (listenOn (PortNumber 9000)) sClose $ \listenSock -> do
     forever $ do
-      bracket (accept listenSock) (\(h, _, _) -> hClose h) $ \(handle, hostname, port) -> do
-        hSetBuffering handle LineBuffering
-        l <- hGetLine handle :: IO Text
-        hPutStrLn handle l
-        return ()
+      bracket (accept listenSock) (\(h, _, _) -> hClose h)
+        (\(handle, hostname, port) -> do
+            hSetBuffering handle LineBuffering
+
+            l <- try (hGetLine handle) :: IO (Either SomeException Text)
+
+            case l of
+              Left _ -> putStrLn "Oops"
+              Right t -> hPutStrLn handle t
+
+            return ())
