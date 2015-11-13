@@ -2,15 +2,18 @@ module Chatty.LibSpec where
 
 import ClassyPrelude
 
+import Control.Concurrent
 import Control.Concurrent.Async (race_)
 
-import System.IO
+import Network
+
+import System.IO hiding (hPutStrLn, hGetLine)
 import System.Posix.IO (createPipe, fdToHandle)
 
 import Test.Hspec
 import Test.Hspec.QuickCheck (prop)
 
-import Chatty.Lib (receive, respond, textToMessage, messageToText, UserMessage(..), Message(..))
+import Chatty.Lib (runServer, receive, respond, textToMessage, messageToText, UserMessage(..), Message(..))
 
 
 ------------------------------------------------------------------------------
@@ -42,6 +45,7 @@ spec = describe "LibSpec" $ do
         longRunning (receive read tm) $ do
           msg <- atomically $ readTChan tm
           msg `shouldBe` UserMessage UserJoin "myUserName"
+
 
     it "should put incoming UserDisconnect on the TChan" $ do
       tm <- newTChanIO
@@ -95,6 +99,78 @@ spec = describe "LibSpec" $ do
           line <- ClassyPrelude.hGetLine read :: IO Text
           line `shouldBe` "username: hello"
 
+
+  describe "full integration" $ do
+    it "should echo commands to myself" $ do
+      longRunning runServer $ do
+        threadDelay 10000
+        me <- connectTo "127.0.0.1" (PortNumber 9000)
+
+        hPutStrLn me ("/join me" :: Text)
+        l <- hGetLine me :: IO Text
+        l `shouldBe` "*** User me Connected ***"
+
+        hPutStrLn me ("/msg me hello" :: Text)
+        msg <- hGetLine me :: IO Text
+        msg `shouldBe` "me: hello"
+
+
+    it "should allow two people to connect" $ do
+      longRunning runServer $ do
+        threadDelay 10000
+        me <- connectTo "127.0.0.1" (PortNumber 9000)
+        you <- connectTo "127.0.0.1" (PortNumber 9000)
+
+        hPutStrLn me ("/join me" :: Text)
+        hPutStrLn you ("/join you" :: Text)
+
+        m1 <- hGetLine me :: IO Text
+        m1 `shouldBe` "*** User me Connected ***"
+
+        m2 <- hGetLine me :: IO Text
+        m2 `shouldBe` "*** User you Connected ***"
+
+        y1 <- hGetLine you :: IO Text
+        y1 `shouldBe` "*** User you Connected ***"
+
+
+    it "should broadcast messages to all connected clients" $ do
+      longRunning runServer $ do
+        -- Need to wait for the server to be setup
+        -- What is a better pattern here?
+        -- I could use a callback function to runServer to know when I connected
+        threadDelay 10000
+        me <- connectTo "127.0.0.1" (PortNumber 9000)
+        you <- connectTo "127.0.0.1" (PortNumber 9000)
+        them <- connectTo "127.0.0.1" (PortNumber 9000)
+
+        hPutStrLn me   ("/join me" :: Text)
+        hPutStrLn you  ("/join you" :: Text)
+        hPutStrLn them ("/join them" :: Text)
+
+        -- User connect messages
+        hGetLine me  :: IO Text
+        hGetLine me  :: IO Text
+        hGetLine me  :: IO Text
+
+        hGetLine you :: IO Text
+        hGetLine you :: IO Text
+
+        hGetLine them :: IO Text
+
+        hPutStrLn me ("/msg me hello you" :: Text)
+
+        -- All should get the same messages
+        m <- hGetLine me   :: IO Text
+        y <- hGetLine you  :: IO Text
+        t <- hGetLine them :: IO Text
+
+        m `shouldBe` y
+        y `shouldBe` t
+
+        hClose me
+        hClose you
+        hClose them
 
 ------------------------------------------------------------------------------
 -- Helpers

@@ -3,6 +3,7 @@ module Chatty.Lib
     , messageToText
     , receive
     , respond
+    , runServer
     , Message (..)
     , UserMessage (..)
     , Name
@@ -16,6 +17,9 @@ import qualified Data.Char as C
 
 import Network
 import System.IO (hSetBuffering, BufferMode(..))
+
+import Control.Concurrent
+import Control.Concurrent.Async (race_)
 
 ------------------------------------------------------------------------------
 type Name = Text
@@ -61,9 +65,13 @@ messageToText _ = "*** Unknown command ***\n" ++
 
 ------------------------------------------------------------------------------
 receive :: Handle -> TChan UserMessage -> IO ()
-receive h msgq = forever $ do
-  input <- hGetLine h
-  atomically $ writeTChan msgq (textToMessage input)
+receive h msgq = loop
+  where
+    loop = do
+      input <- try (hGetLine h) :: IO (Either SomeException Text)
+      case input of
+        Left e -> return ()
+        Right t -> atomically (writeTChan msgq (textToMessage t)) >> loop
 
 ------------------------------------------------------------------------------
 respond :: Handle -> TChan UserMessage -> IO ()
@@ -76,15 +84,15 @@ respond h msgq = forever $ do
 runServer :: IO ()
 runServer = withSocketsDo $ do
   bracket (listenOn (PortNumber 9000)) sClose $ \listenSock -> do
+
+    broadcastChan <- newBroadcastTChanIO
+
     forever $ do
-      bracket (accept listenSock) (\(h, _, _) -> hClose h)
-        (\(handle, hostname, port) -> do
-            hSetBuffering handle LineBuffering
+      (h, _, _) <- accept listenSock
+      forkFinally (connectUser h broadcastChan) (const (hClose h))
 
-            l <- try (hGetLine handle) :: IO (Either SomeException Text)
-
-            case l of
-              Left _ -> putStrLn "Oops"
-              Right t -> hPutStrLn handle t
-
-            return ())
+  where
+    connectUser h bc = do
+      hSetBuffering h LineBuffering
+      writeChan <- (atomically . dupTChan) bc
+      race_ (receive h bc) (respond h writeChan)

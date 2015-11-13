@@ -4,9 +4,8 @@ import Chatty.Lib
 import ClassyPrelude
 
 ------------------------------------------------------------------------------
-
-
-
-------------------------------------------------------------------------------
 main :: IO ()
-main = putStrLn "Okay there"
+main = do
+  putStrLn "Welcome to chatty-lambda"
+  putStrLn "Connect to host on port 9000"
+  runServer

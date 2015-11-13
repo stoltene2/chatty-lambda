@@ -66,6 +66,7 @@ test-suite chatty-lambda-test
                      , HUnit
                      , QuickCheck
                      , chatty-lambda
+                     , network             >= 2.3     && <2.7
                      , classy-prelude      >= 0.12    && <0.13
                      , hspec >= 2.1.7
                      , unix
