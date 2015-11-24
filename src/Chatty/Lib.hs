@@ -38,19 +38,15 @@ data UserMessage = UserMessage
 
 ------------------------------------------------------------------------------
 
-splitCommand :: Text -> (Text, (Text, Text))
-splitCommand t =
-  let
-    (cmd, nameAndRest) = second T.strip (T.break C.isSpace t)
-    (name, rest) = second T.strip (T.break C.isSpace nameAndRest)
-  in (cmd, (name, rest))
+splitCommand :: Text -> (Text, Text)
+splitCommand t = second T.strip (T.break C.isSpace t)
 
 
-textToMessage :: Text -> UserMessage
-textToMessage (splitCommand -> ("/join", (name, _))) = UserMessage UserJoin name
-textToMessage (splitCommand -> ("/quit", (name, _))) = UserMessage UserDisconnect name
-textToMessage (splitCommand -> ("/msg",  (name, msg))) = UserMessage (UserText msg) name
-textToMessage t = UserMessage UserInvalidCommand "unknownUser"
+textToMessage :: Name -> Text -> UserMessage
+textToMessage name (splitCommand -> ("/join",  _)) = UserMessage UserJoin name
+textToMessage name (splitCommand -> ("/quit",  _)) = UserMessage UserDisconnect name
+textToMessage name (splitCommand -> ("/msg", msg)) = UserMessage (UserText msg) name
+textToMessage name t = UserMessage UserInvalidCommand name
 
 
 messageToText :: UserMessage -> Text
@@ -64,14 +60,14 @@ messageToText _ = "*** Unknown command ***\n" ++
 
 
 ------------------------------------------------------------------------------
-receive :: Handle -> TChan UserMessage -> IO ()
-receive h msgq = loop
+receive :: Name -> Handle -> TChan UserMessage -> IO ()
+receive name h msgq = loop
   where
     loop = do
       input <- try (hGetLine h) :: IO (Either SomeException Text)
       case input of
         Left e -> return ()
-        Right t -> atomically (writeTChan msgq (textToMessage t)) >> loop
+        Right t -> atomically (writeTChan msgq (textToMessage name t)) >> loop
 
 ------------------------------------------------------------------------------
 respond :: Handle -> TChan UserMessage -> IO ()
@@ -94,5 +90,6 @@ runServer = withSocketsDo $ do
   where
     connectUser h bc = do
       hSetBuffering h LineBuffering
+      name <- hGetLine h
       writeChan <- (atomically . dupTChan) bc
-      race_ (receive h bc) (respond h writeChan)
+      race_ (receive name h bc) (respond h writeChan)

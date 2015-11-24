@@ -22,27 +22,27 @@ spec = describe "LibSpec" $ do
 
   describe "textToMessage" $ do
     it "shoul create UserText from '/msg username msg text'" $ do
-      textToMessage "/msg myUserName foo bar bang" `shouldBe` UserMessage (UserText "foo bar bang") "myUserName"
+      textToMessage "myUserName" "/msg foo bar bang" `shouldBe` UserMessage (UserText "foo bar bang") "myUserName"
 
 
     it "should create UserJoin message from '/join username'" $ do
-      textToMessage "/join myUserName" `shouldBe` UserMessage UserJoin "myUserName"
+      textToMessage "myUserName" "/join" `shouldBe` UserMessage UserJoin "myUserName"
 
 
     it "should create UserDisconnect message from '/quit'" $ do
-      textToMessage "/quit myUserName" `shouldBe` UserMessage UserDisconnect "myUserName"
+      textToMessage "myUserName" "/quit" `shouldBe` UserMessage UserDisconnect "myUserName"
 
 
     it "should create UserInvalidCommand from anything else" $ do
-      textToMessage "myUserName" `shouldBe` UserMessage UserInvalidCommand "unknownUser"
+      textToMessage "myUserName" "anything" `shouldBe` UserMessage UserInvalidCommand "myUserName"
 
 
   describe "receive" $ do
     it "should put incoming UserJoin on the TChan" $ do
       tm <- newTChanIO
       runWithLinkedHandles $ \(read, write) -> do
-        hPutStr write "/join myUserName\n"
-        longRunning (receive read tm) $ do
+        hPutStr write "/join\n"
+        longRunning (receive "myUserName" read tm) $ do
           msg <- atomically $ readTChan tm
           msg `shouldBe` UserMessage UserJoin "myUserName"
 
@@ -50,8 +50,8 @@ spec = describe "LibSpec" $ do
     it "should put incoming UserDisconnect on the TChan" $ do
       tm <- newTChanIO
       runWithLinkedHandles $ \(read, write) -> do
-        hPutStr write "/quit myUserName\n"
-        longRunning (receive read tm) $ do
+        hPutStr write "/quit\n"
+        longRunning (receive "myUserName" read tm) $ do
 
           msg <- atomically $ readTChan tm
           msg `shouldBe` UserMessage UserDisconnect "myUserName"
@@ -61,8 +61,8 @@ spec = describe "LibSpec" $ do
       tm <- newTChanIO
 
       runWithLinkedHandles $ \(read, write) -> do
-        hPutStr write "/msg myUserName Why hello there\n"
-        longRunning (receive read tm) $ do
+        hPutStr write "/msg Why hello there\n"
+        longRunning (receive "myUserName" read tm) $ do
 
           msg <- atomically $ readTChan tm
           msg `shouldBe` UserMessage (UserText "Why hello there") "myUserName"
@@ -106,11 +106,13 @@ spec = describe "LibSpec" $ do
         threadDelay 10000
         me <- connectTo "127.0.0.1" (PortNumber 9000)
 
+        hPutStrLn me ("me" :: Text)
         hPutStrLn me ("/join me" :: Text)
+
         l <- hGetLine me :: IO Text
         l `shouldBe` "*** User me Connected ***"
 
-        hPutStrLn me ("/msg me hello" :: Text)
+        hPutStrLn me ("/msg hello" :: Text)
         msg <- hGetLine me :: IO Text
         msg `shouldBe` "me: hello"
 
@@ -121,8 +123,11 @@ spec = describe "LibSpec" $ do
         me <- connectTo "127.0.0.1" (PortNumber 9000)
         you <- connectTo "127.0.0.1" (PortNumber 9000)
 
-        hPutStrLn me ("/join me" :: Text)
-        hPutStrLn you ("/join you" :: Text)
+        hPutStrLn me ("me" :: Text)
+        hPutStrLn you ("you" :: Text)
+
+        hPutStrLn me ("/join" :: Text)
+        hPutStrLn you ("/join" :: Text)
 
         m1 <- hGetLine me :: IO Text
         m1 `shouldBe` "*** User me Connected ***"
@@ -140,13 +145,19 @@ spec = describe "LibSpec" $ do
         -- What is a better pattern here?
         -- I could use a callback function to runServer to know when I connected
         threadDelay 10000
+
         me <- connectTo "127.0.0.1" (PortNumber 9000)
         you <- connectTo "127.0.0.1" (PortNumber 9000)
         them <- connectTo "127.0.0.1" (PortNumber 9000)
 
-        hPutStrLn me   ("/join me" :: Text)
-        hPutStrLn you  ("/join you" :: Text)
-        hPutStrLn them ("/join them" :: Text)
+
+        hPutStrLn me   ("me" :: Text)
+        hPutStrLn you  ("you" :: Text)
+        hPutStrLn them ("them" :: Text)
+
+        hPutStrLn me   ("/join" :: Text)
+        hPutStrLn you  ("/join" :: Text)
+        hPutStrLn them ("/join" :: Text)
 
         -- User connect messages
         hGetLine me  :: IO Text
@@ -158,7 +169,7 @@ spec = describe "LibSpec" $ do
 
         hGetLine them :: IO Text
 
-        hPutStrLn me ("/msg me hello you" :: Text)
+        hPutStrLn me ("/msg hello you" :: Text)
 
         -- All should get the same messages
         m <- hGetLine me   :: IO Text
