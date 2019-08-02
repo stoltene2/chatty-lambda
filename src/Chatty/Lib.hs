@@ -10,9 +10,10 @@ module Chatty.Lib
     ) where
 
 
-import ClassyPrelude
+import ClassyPrelude hiding (hSetBuffering, race_)
 
 import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
 import qualified Data.Char as C
 
 import Network
@@ -64,7 +65,7 @@ receive :: Name -> Handle -> TChan UserMessage -> IO ()
 receive name h msgq = loop
   where
     loop = do
-      input <- try (hGetLine h) :: IO (Either SomeException Text)
+      input <- try (TIO.hGetLine h) :: IO (Either SomeException Text)
       case input of
         Left e -> return ()
         Right t -> atomically (writeTChan msgq (textToMessage name t)) >> loop
@@ -73,7 +74,7 @@ receive name h msgq = loop
 respond :: Handle -> TChan UserMessage -> IO ()
 respond h msgq = forever $ do
   msg <- atomically (readTChan msgq)
-  hPutStrLn h (messageToText msg)
+  TIO.hPutStrLn h (messageToText msg)
 
 
 ------------------------------------------------------------------------------
@@ -90,6 +91,6 @@ runServer = withSocketsDo $ do
   where
     connectUser h bc = do
       hSetBuffering h LineBuffering
-      name <- hGetLine h
+      name <- TIO.hGetLine h
       writeChan <- (atomically . dupTChan) bc
       race_ (receive name h bc) (respond h writeChan)

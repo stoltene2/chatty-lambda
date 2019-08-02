@@ -1,13 +1,14 @@
 module Chatty.LibSpec where
 
-import ClassyPrelude
+import ClassyPrelude hiding (race_)
 
 import Control.Concurrent
 import Control.Concurrent.Async (race_)
 
 import Network
 
-import System.IO hiding (hPutStrLn, hGetLine)
+import qualified Data.Text.IO as TIO
+import System.IO hiding (hPutStrLn, hGetLine, hClose, hSetBuffering)
 import System.Posix.IO (createPipe, fdToHandle)
 
 import Test.Hspec
@@ -96,7 +97,7 @@ spec = describe "LibSpec" $ do
         atomically (writeTChan tm (UserMessage (UserText "hello") "username"))
 
         longRunning (respond write tm) $ do
-          line <- ClassyPrelude.hGetLine read :: IO Text
+          line <- TIO.hGetLine read
           line `shouldBe` "username: hello"
 
 
@@ -106,14 +107,14 @@ spec = describe "LibSpec" $ do
         threadDelay 10000
         me <- connectTo "127.0.0.1" (PortNumber 9000)
 
-        hPutStrLn me ("me" :: Text)
-        hPutStrLn me ("/join me" :: Text)
+        TIO.hPutStrLn me "me"
+        TIO.hPutStrLn me "/join me"
 
-        l <- hGetLine me :: IO Text
+        l <- TIO.hGetLine me
         l `shouldBe` "*** User me Connected ***"
 
-        hPutStrLn me ("/msg hello" :: Text)
-        msg <- hGetLine me :: IO Text
+        TIO.hPutStrLn me "/msg hello"
+        msg <- TIO.hGetLine me
         msg `shouldBe` "me: hello"
 
 
@@ -123,19 +124,19 @@ spec = describe "LibSpec" $ do
         me <- connectTo "127.0.0.1" (PortNumber 9000)
         you <- connectTo "127.0.0.1" (PortNumber 9000)
 
-        hPutStrLn me ("me" :: Text)
-        hPutStrLn you ("you" :: Text)
+        TIO.hPutStrLn me "me"
+        TIO.hPutStrLn you "you"
 
-        hPutStrLn me ("/join" :: Text)
-        hPutStrLn you ("/join" :: Text)
+        TIO.hPutStrLn me "/join"
+        TIO.hPutStrLn you "/join"
 
-        m1 <- hGetLine me :: IO Text
+        m1 <- TIO.hGetLine me
         m1 `shouldBe` "*** User me Connected ***"
 
-        m2 <- hGetLine me :: IO Text
+        m2 <- TIO.hGetLine me
         m2 `shouldBe` "*** User you Connected ***"
 
-        y1 <- hGetLine you :: IO Text
+        y1 <- TIO.hGetLine you
         y1 `shouldBe` "*** User you Connected ***"
 
 
@@ -151,30 +152,30 @@ spec = describe "LibSpec" $ do
         them <- connectTo "127.0.0.1" (PortNumber 9000)
 
 
-        hPutStrLn me   ("me" :: Text)
-        hPutStrLn you  ("you" :: Text)
-        hPutStrLn them ("them" :: Text)
+        TIO.hPutStrLn me   "me"
+        TIO.hPutStrLn you  "you"
+        TIO.hPutStrLn them "them"
 
-        hPutStrLn me   ("/join" :: Text)
-        hPutStrLn you  ("/join" :: Text)
-        hPutStrLn them ("/join" :: Text)
+        TIO.hPutStrLn me   "/join"
+        TIO.hPutStrLn you  "/join"
+        TIO.hPutStrLn them "/join"
 
         -- User connect messages
-        hGetLine me  :: IO Text
-        hGetLine me  :: IO Text
-        hGetLine me  :: IO Text
+        TIO.hGetLine me
+        TIO.hGetLine me
+        TIO.hGetLine me
 
-        hGetLine you :: IO Text
-        hGetLine you :: IO Text
+        TIO.hGetLine you
+        TIO.hGetLine you
 
-        hGetLine them :: IO Text
+        TIO.hGetLine them
 
-        hPutStrLn me ("/msg hello you" :: Text)
+        TIO.hPutStrLn me "/msg hello you"
 
         -- All should get the same messages
-        m <- hGetLine me   :: IO Text
-        y <- hGetLine you  :: IO Text
-        t <- hGetLine them :: IO Text
+        m <- TIO.hGetLine me
+        y <- TIO.hGetLine you
+        t <- TIO.hGetLine them
 
         m `shouldBe` y
         y `shouldBe` t
