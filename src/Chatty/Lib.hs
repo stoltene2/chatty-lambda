@@ -1,9 +1,11 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Chatty.Lib
     ( textToMessage
     , messageToText
     , receive
     , respond
     , runServer
+    , startServer
     , Message (..)
     , UserMessage (..)
     , Name
@@ -16,7 +18,7 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Data.Char as C
 
-import Network
+import Network.Socket
 import System.IO (hSetBuffering, BufferMode(..))
 
 import Control.Concurrent
@@ -80,17 +82,32 @@ respond h msgq = forever $ do
 ------------------------------------------------------------------------------
 runServer :: IO ()
 runServer = withSocketsDo $ do
-  bracket (listenOn (PortNumber 9000)) sClose $ \listenSock -> do
+  bracket mkListenSocket close $ \serverSocket -> do
 
     broadcastChan <- newBroadcastTChanIO
-
     forever $ do
-      (h, _, _) <- accept listenSock
-      forkFinally (connectUser h broadcastChan) (const (hClose h))
+      (userSocket, _) <- accept serverSocket
+      hUser <- socketToHandle userSocket ReadWriteMode
+      hSetBuffering hUser LineBuffering
+
+      forkFinally (connectUser hUser broadcastChan) (\_ -> hClose hUser)
 
   where
     connectUser h bc = do
-      hSetBuffering h LineBuffering
       name <- TIO.hGetLine h
       writeChan <- (atomically . dupTChan) bc
       race_ (receive name h bc) (respond h writeChan)
+
+    mkListenSocket :: IO Socket
+    mkListenSocket = do
+      let addr = SockAddrInet
+                 (9000 :: PortNumber)
+                 (tupleToHostAddress (0, 0, 0, 0))
+      s <- socket AF_INET Stream 6 {-tcp-}
+      setSocketOption s ReuseAddr 1
+      bind s addr
+      listen s 128
+      return s
+
+startServer :: IO ThreadId
+startServer = forkIO runServer

@@ -5,16 +5,16 @@ import ClassyPrelude hiding (race_)
 import Control.Concurrent
 import Control.Concurrent.Async (race_)
 
-import Network
+import Network.Socket (tupleToHostAddress, close, socket, connect, PortNumber(..), SockAddr(..), Family(..), SocketType(..), Socket)
+import Network.Socket.ByteString (sendAll, recv)
 
 import qualified Data.Text.IO as TIO
-import System.IO hiding (hPutStrLn, hGetLine, hClose, hSetBuffering)
+import System.IO hiding (putStrLn, hPutStrLn, hGetLine, hClose, hSetBuffering)
 import System.Posix.IO (createPipe, fdToHandle)
 
 import Test.Hspec
-import Test.Hspec.QuickCheck (prop)
 
-import Chatty.Lib (runServer, receive, respond, textToMessage, messageToText, UserMessage(..), Message(..))
+import Chatty.Lib (runServer, startServer, receive, respond, textToMessage, messageToText, UserMessage(..), Message(..))
 
 
 ------------------------------------------------------------------------------
@@ -89,7 +89,6 @@ spec = describe "LibSpec" $ do
         "/msg <username> <text\n" ++
         "/quit <username>"
 
-
   describe "respond" $ do
     it "should dispatch messages from the UserMessage channel and respond over handle" $ do
       runWithLinkedHandles $ \(read, write) -> do
@@ -100,89 +99,53 @@ spec = describe "LibSpec" $ do
           line <- TIO.hGetLine read
           line `shouldBe` "username: hello"
 
+    describe "full integration" $ do
+      around withServerAndUsers $ do
+        it "should echo commands to myself" $ \(_, me, _, _) -> do
+            sendAll me "me\n"
+            sendAll me "/join me\n"
 
-  describe "full integration" $ do
-    it "should echo commands to myself" $ do
-      longRunning runServer $ do
-        threadDelay 10000
-        me <- connectTo "127.0.0.1" (PortNumber 9000)
+            recv me 4096 `shouldReturn` "*** User me Connected ***\n"
 
-        TIO.hPutStrLn me "me"
-        TIO.hPutStrLn me "/join me"
+            sendAll me "/msg hello\n"
+            recv me 4096 `shouldReturn` "me: hello\n"
 
-        l <- TIO.hGetLine me
-        l `shouldBe` "*** User me Connected ***"
+        it "should allow two people to connect" $ \(tid, me, you, _) -> do
+            sendAll me "me\n"
+            sendAll me "/join\n"
+            recv me 4096 `shouldReturn` "*** User me Connected ***\n"
 
-        TIO.hPutStrLn me "/msg hello"
-        msg <- TIO.hGetLine me
-        msg `shouldBe` "me: hello"
+            sendAll you "you\n"
+            sendAll you "/join\n"
+            recv me 4096 `shouldReturn` "*** User you Connected ***\n"
+            recv you 4096 `shouldReturn` "*** User you Connected ***\n"
 
+        it "should broadcast messages to all connected clients" $ \(tid, me, you, them) -> do
+            sendAll me   "me\n"
+            sendAll me   "/join\n"
 
-    it "should allow two people to connect" $ do
-      longRunning runServer $ do
-        threadDelay 10000
-        me <- connectTo "127.0.0.1" (PortNumber 9000)
-        you <- connectTo "127.0.0.1" (PortNumber 9000)
+            sendAll you  "you\n"
+            sendAll you  "/join\n"
 
-        TIO.hPutStrLn me "me"
-        TIO.hPutStrLn you "you"
+            sendAll them "them\n"
+            sendAll them "/join\n"
 
-        TIO.hPutStrLn me "/join"
-        TIO.hPutStrLn you "/join"
+            threadDelay 10000 -- Wait 10ms for all users to connect
 
-        m1 <- TIO.hGetLine me
-        m1 `shouldBe` "*** User me Connected ***"
+            -- flush User connect messages
+            recv me 4096
+            recv you 4096
+            recv them 4096
 
-        m2 <- TIO.hGetLine me
-        m2 `shouldBe` "*** User you Connected ***"
+            sendAll me "/msg hello you\n"
 
-        y1 <- TIO.hGetLine you
-        y1 `shouldBe` "*** User you Connected ***"
+            -- All should get the same messages
+            m <- recv me 4096
+            y <- recv you 4096
+            t <- recv them 4096
 
-
-    it "should broadcast messages to all connected clients" $ do
-      longRunning runServer $ do
-        -- Need to wait for the server to be setup
-        -- What is a better pattern here?
-        -- I could use a callback function to runServer to know when I connected
-        threadDelay 10000
-
-        me <- connectTo "127.0.0.1" (PortNumber 9000)
-        you <- connectTo "127.0.0.1" (PortNumber 9000)
-        them <- connectTo "127.0.0.1" (PortNumber 9000)
-
-
-        TIO.hPutStrLn me   "me"
-        TIO.hPutStrLn you  "you"
-        TIO.hPutStrLn them "them"
-
-        TIO.hPutStrLn me   "/join"
-        TIO.hPutStrLn you  "/join"
-        TIO.hPutStrLn them "/join"
-
-        -- User connect messages
-        TIO.hGetLine me
-        TIO.hGetLine me
-        TIO.hGetLine me
-
-        TIO.hGetLine you
-        TIO.hGetLine you
-
-        TIO.hGetLine them
-
-        TIO.hPutStrLn me "/msg hello you"
-
-        -- All should get the same messages
-        m <- TIO.hGetLine me
-        y <- TIO.hGetLine you
-        t <- TIO.hGetLine them
-
-        m `shouldBe` y
-        y `shouldBe` t
-
-        hClose me
-        hClose you
-        hClose them
+            m `shouldBe` y
+            y `shouldBe` t
 
 ------------------------------------------------------------------------------
 -- Helpers
@@ -215,3 +178,34 @@ createLinkedHandles = do
    hSetBuffering read LineBuffering
    hSetBuffering write LineBuffering
    return (read, write)
+
+
+withServer = bracket startServer killThread
+
+withServerDebug action = bracket
+  (putStrLn "withServer: Server starting" >> startServer)
+  (\tid -> putStrLn "withServer: Server stopping" >> killThread tid)
+  (const (putStrLn "withServer: running action" >> action))
+
+withServerAndUsers = bracket
+  (do
+      tid <- startServer
+      threadDelay 10000
+      me <- simpleConnect (9000 :: PortNumber)
+      you <- simpleConnect (9000 :: PortNumber)
+      them <- simpleConnect (9000 :: PortNumber)
+      return (tid, me, you, them)
+  )
+  (\(tid, me, you, them) -> do
+      close me
+      close you
+      close them
+      killThread tid
+  )
+
+
+simpleConnect :: PortNumber -> IO Socket
+simpleConnect port = do
+  sock <- socket AF_INET Stream 6
+  connect sock (SockAddrInet port (tupleToHostAddress (127, 0, 0, 1)))
+  return sock
